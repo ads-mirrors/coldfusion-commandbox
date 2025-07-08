@@ -1592,10 +1592,14 @@ component accessors="true" singleton {
 			'java.management/sun.management'
 		].reduce( (opens='',o)=>opens &= ' --add-opens=#o#=ALL-UNNAMED' );
 
-		var javaExports = [
+		var javaExportsArray = [
 			'java.desktop/sun.java2d',
 			'java.base/sun.util'
-		].reduce( (exports='',o)=>exports &= ' --add-exports=#o#=ALL-UNNAMED' );
+		];
+		if (variables.fileSystemUtil.isMac()) {
+			javaExportsArray.append('java.desktop/com.apple.eawt');
+		}
+		var javaExports = javaExportsArray.reduce( (exports='',o)=>exports &= ' --add-exports=#o#=ALL-UNNAMED' );
 
 		systemSettings.setSystemSetting( 'JDK_JAVA_OPTIONS', systemSettings.getSystemSetting( 'JDK_JAVA_OPTIONS', javaOpens & ' ' & javaExports )  );
 		systemSettings.setSystemSetting( 'COMMANDBOX_HOME', systemSettings.getSystemSetting( 'COMMANDBOX_HOME', expandPath( '/commandbox-home' ) ) );
