@@ -886,7 +886,7 @@ component accessors="true" singleton {
 
 		// Now that we know the engine, let's do the rewritesFile default
 		// If BoxLang then setup a default rewrite file if none specified
-		var rewritesFile 	= serverProps.rewritesFile 	?: serverJSON.web.rewrites.rewritesFile;
+		var rewritesFile 	= serverProps.rewritesFile 	?: ( serverJSON.web.rewrites.rewritesFile ?: '' );
 		if( !len( rewritesFile ) ){
 			rewritesFile = serverInfo.engineName eq 'boxlang' ? 'index.bxm' : 'index.cfm';
 		}
