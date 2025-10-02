@@ -14,24 +14,26 @@ component accessors="true" singleton {
 	* Where the server libs are located
 	*/
 	property name="libDir";
+
 	/**
 	* Where the server configuration file is
 	*/
 	property name="serverConfig";
+
 	/**
 	* Where custom servers are stored
 	*/
 	property name="customServerDirectory";
+
 	/**
 	* Where the Java Command Executable is
 	*/
 	property name="javaCommand";
+
 	/**
 	* Where the Run War jar path is
 	*/
 	property name="jarPath";
-
-	property name='rewritesDefaultConfig'	inject='rewritesDefaultConfig@constants';
 	property name='interceptorService'		inject='interceptorService';
 	property name='configService'			inject='ConfigService';
 	property name='CommandService'			inject='provider:CommandService';
@@ -49,14 +51,15 @@ component accessors="true" singleton {
 	property name="printUtil"				inject="print";
 
 	/**
-	* Constructor
-	* @shell.inject shell
-	* @formatter.inject Formatter
-	* @fileSystem.inject FileSystem
-	* @homeDir.inject HomeDir@constants
-	* @consoleLogger.inject logbox:logger:console
-	* @logger.inject logbox:logger:{this}
-	*/
+	 * Constructor
+	 *
+	 * @shell.inject shell
+	 * @formatter.inject Formatter
+	 * @fileSystem.inject FileSystem
+	 * @homeDir.inject HomeDir@constants
+	 * @consoleLogger.inject logbox:logger:console
+	 * @logger.inject logbox:logger:{this}
+	 */
 	function init(
 		required shell,
 		required formatter,
@@ -110,9 +113,9 @@ component accessors="true" singleton {
 		return this;
 	}
 
-	function onDIComplete() {
-	}
-
+	/**
+	 * Returns the default server.json settings as a struct
+	 */
 	function getDefaultServerJSON() {
 		// pull default settings from config to mix in below.
 		// The structure of server.defaults in Config settings matches the default server.json layout here.
@@ -204,6 +207,8 @@ component accessors="true" singleton {
 					'listener' : d.web.websocket.listener ?: '/WebSocket.cfc'
 				},
 				'rewrites' : {
+					// TODO: Move this to index.bxm once we move to CommandBox 7
+					'rewritesFile' : d.web.rewrites.rewritesFile ?: 'index.cfm',
 					'enable' : d.web.rewrites.enable ?: false,
 					'logEnable' : d.web.rewrites.logEnable ?: false,
 					'config' : d.web.rewrites.config ?: '',
@@ -291,11 +296,9 @@ component accessors="true" singleton {
 	/**
 	 * Start a server instance
 	 *
-	 * @serverProps.hint A struct of settings to influence how to start the server. Params not provided by the user are null.
+	 * @serverProps A struct of settings to influence how to start the server. Params not provided by the user are null.
 	 **/
-	function start(
-		Struct serverProps
-	){
+	function start( Struct serverProps = {} ) {
 
 		var job = wirebox.getInstance( 'interactiveJob' );
 		job.start( 'Starting Server', 10 );
@@ -347,8 +350,6 @@ component accessors="true" singleton {
 
 		// Look up the server that we're starting
 		var serverDetails = resolveServerDetails( arguments.serverProps );
-
-
 		var foundServer = getServerInfoByName( serverDetails.defaultName );
 		if( !isSingleServerMode() && structCount( foundServer ) && normalizeWebroot( foundServer.webroot ) != normalizeWebroot( serverDetails.defaultwebroot ) ) {
 			throw(
@@ -357,7 +358,6 @@ component accessors="true" singleton {
 				type="commandException"
 			 );
 		}
-
 
 		// Get defaults
 		var defaults = getDefaultServerJSON();
@@ -371,7 +371,10 @@ component accessors="true" singleton {
 		var serverJSONToSave = duplicate( serverJSON );
 		var serverInfo = serverDetails.serverinfo;
 
-		interceptorService.announceInterception( 'preServerStart', { serverDetails=serverDetails, serverProps=serverProps, serverInfo=serverDetails.serverInfo, serverJSON=serverDetails.serverJSON, defaults=defaults } );
+		interceptorService.announceInterception(
+			'preServerStart',
+			{ serverDetails=serverDetails, serverProps=serverProps, serverInfo=serverDetails.serverInfo, serverJSON=serverDetails.serverJSON, defaults=defaults }
+		);
 
 		// In case the interceptor changed them
 		defaultName = serverDetails.defaultName;
@@ -456,7 +459,7 @@ component accessors="true" singleton {
 	    		configPath &= '/';
 	    	}
 			// Only need switch cases for properties that are nested or use different name
-			switch(prop) {
+			switch( prop ) {
 			    case "port":
 					serverJSONToSave[ 'web' ][ 'http' ][ 'port' ] = serverProps[ prop ];
 			         break;
@@ -570,6 +573,9 @@ component accessors="true" singleton {
 			    case "welcomeFiles":
 					serverJSONToSave[ 'web' ][ 'welcomeFiles' ] = serverProps[ prop ];
 			         break;
+				case "rewritesFile" :
+					serverJSONToSave[ 'web' ][ 'rewrites' ][ 'rewritesFile' ] = serverProps[ prop ];
+					 break;
 			    case "rewritesEnable":
 					serverJSONToSave[ 'web' ][ 'rewrites' ][ 'enable' ] = serverProps[ prop ];
 			         break;
@@ -667,27 +673,9 @@ component accessors="true" singleton {
 		// relative trayIcon in config setting server defaults is resolved relative to the web root
 		if( defaults.keyExists( 'trayIcon' ) && len( defaults.trayIcon ) ) { defaults.trayIcon = fileSystemUtil.resolvePath( defaults.trayIcon, defaultwebroot ); }
 		serverInfo.trayIcon			= serverProps.trayIcon 			?: serverJSON.trayIcon 				?: defaults.trayIcon;
-
-
-/*
-		// Double check that the port in the user params or server.json isn't in use
-		if( serverInfo.HTTPEnable && !isPortAvailable( serverInfo.host, serverInfo.port ) ) {
-			job.addErrorLog( "" );
-			var badPortlocation = 'config';
-			if( serverProps.keyExists( 'port' ) ) {
-				badPortlocation = 'start params';
-			} else if ( len( defaults.web.http.port ?: '' ) ) {
-				badPortlocation = 'server.json';
-			} else {
-				badPortlocation = 'config server defaults';
-			}
-			throw( message="You asked for port [#serverInfo.port#] in your #badPortlocation# but it's already in use.", detail="Please choose another or use netstat to find out what process is using the port already.", type="commandException" );
-		}
-*/
-
 		serverInfo.rewritesEnable 	= serverProps.rewritesEnable	?: serverJSON.web.rewrites.enable		?: defaults.web.rewrites.enable;
-		serverInfo.rewritesStatusPath = 							   serverJSON.web.rewrites.statusPath	?: defaults.web.rewrites.statusPath;
-		serverInfo.rewritesConfigReloadSeconds =					   serverJSON.web.rewrites.configReloadSeconds ?: defaults.web.rewrites.configReloadSeconds;
+		serverInfo.rewritesStatusPath = serverJSON.web.rewrites.statusPath	?: defaults.web.rewrites.statusPath;
+		serverInfo.rewritesConfigReloadSeconds = serverJSON.web.rewrites.configReloadSeconds ?: defaults.web.rewrites.configReloadSeconds;
 
 		// relative rewrite config path in server.json is resolved relative to the server.json
 		if( isDefined( 'serverJSON.web.rewrites.config' ) && len( serverJSON.web.rewrites.config ) ) { serverJSON.web.rewrites.config = fileSystemUtil.resolvePath( serverJSON.web.rewrites.config, defaultServerConfigFileDirectory ); }
@@ -895,6 +883,14 @@ component accessors="true" singleton {
 	    serverInfo.engineName = serverinfo.cfengine contains 'adobe' ? 'adobe' : serverInfo.engineName;
 	    serverInfo.engineName = serverinfo.warPath contains 'adobe' ? 'adobe' : serverInfo.engineName;
 	    serverInfo.engineName = serverinfo.warPath contains 'boxlang' ? 'boxlang' : serverInfo.engineName;
+
+		// Now that we know the engine, let's do the rewritesFile default
+		// If BoxLang then setup a default rewrite file if none specified
+		var rewritesFile 	= serverProps.rewritesFile 	?: ( serverJSON.web.rewrites.rewritesFile ?: '' );
+		if( !len( rewritesFile ) ){
+			rewritesFile = serverInfo.engineName eq 'boxlang' ? 'index.bxm' : 'index.cfm';
+		}
+		serverInfo.rewritesFile = rewritesFile;
 
 		var processName = ( serverInfo.name is "" ? "CommandBox" : serverInfo.name );
 
@@ -1274,7 +1270,7 @@ component accessors="true" singleton {
 					serverInfo.trayIcon = '/commandbox/system/config/server-icons/trayicon-cf09#iconSize#.png';
 				} else if( listFirst( serverInfo.engineVersion, '.' ) == 10 ) {
 					serverInfo.trayIcon = '/commandbox/system/config/server-icons/trayicon-cf10#iconSize#.png';
-				} else if( listFirst( serverInfo.engineVersion, '.' ) == 11 ) {	
+				} else if( listFirst( serverInfo.engineVersion, '.' ) == 11 ) {
 					serverInfo.trayIcon = '/commandbox/system/config/server-icons/trayicon-cf11#iconSize#.png';
 				} else if( listFirst( serverInfo.engineVersion, '.' ) == 2016 ) {
 					serverInfo.trayIcon = '/commandbox/system/config/server-icons/trayicon-cf2016#iconSize#.png';
@@ -1981,7 +1977,17 @@ component accessors="true" singleton {
 	}
 
 	/**
+	 * Resolve all the settings for a given site, merging in server.json web defaults and config defaults
+	 * Also merges in any server properties that were passed on the command line
+	 * Throws if any settings are found that cannot be set on a per-site basis
+	 * Returns nothing, just modifies the serverInfo struct in place
 	 *
+	 * @name The name of the site to resolve
+	 * @serverInfo The serverInfo struct to modify
+	 * @serverProps The server properties passed on the command line
+	 * @serverJSON The full server.json data
+	 * @defaults The config defaults struct
+	 * @multiSite True if there is more than one site defined
 	 */
 	function resolveSiteSettings( string name, struct serverInfo, struct serverProps, struct serverJSON, struct defaults, boolean multiSite ) {
 		var site = serverJSON.sites[ name ];
@@ -2312,7 +2318,7 @@ component accessors="true" singleton {
 		if( serverInfo.rewritesEnable ) {
 			serverInfo.webRules.append(
 				// Mimic the old default Tuckey framework rewrite
-				"framework-rewrite()"
+				"framework-rewrite( '#serverProps.rewritesFile#' )"
 			);
 		}
 
@@ -3274,7 +3280,8 @@ component accessors="true" singleton {
 
 	/**
 	 * persist servers
-	 * @servers.hint struct of serverInfos
+	 *
+	 * @servers struct of serverInfos
  	 **/
 	ServerService function setServers( required Struct servers ){
 		JSONService.writeJSONFile( serverConfig, servers, true );
@@ -3430,7 +3437,7 @@ component accessors="true" singleton {
 		var dateLastStarted = '1/1/1900';
 		var foundServer = {};
 		for( var thisServer in servers ){
-			
+
 			if( fileSystemUtil.resolvePath( path=servers[ thisServer ].webroot, forceDirectory=true ) == arguments.webroot ){
 				if( len( servers[ thisServer ].dateLastStarted) && dateCompare ( servers[ thisServer ].dateLastStarted, dateLastStarted ) == 1 ){
 					dateLastStarted = servers[ thisServer ].dateLastStarted;
@@ -3483,8 +3490,8 @@ component accessors="true" singleton {
 	}
 
 	/**
-	* Returns a new server info structure
-	*/
+	 * Returns a new server info structure
+	 */
 	struct function newServerInfoStruct(){
 		return {
 			'id' 				: "",
@@ -3647,8 +3654,12 @@ component accessors="true" singleton {
 		};
 	}
 
+	/**
+	 * Returns a new site info structure with only the properties that are relevant to a site
+	 */
 	struct function newSiteInfoStruct() {
-		return newServerInfoStruct().filter( (k,v)=>listFindNoCase( 'servletPassPredicate,sslkeyfile,resourceManagerLogging,useproxyforwardedip,clientcertsubjectdns,basicauthenable,casesensitivepaths,sendFileMinSizeKB,blocksensitivepaths,basicauthusers,hstsenable,sslport,webroot,webrules,errorpages,clientcertcatruststorepass,clientcerttrustupstreamheaders,http2enable,sslcertfile,accesslogenable,securityrealm,clientcertcatruststorefile,filecachetotalsizemb,sslenable,ajpport,blockflashremoting,sslforceredirect,filecachemaxfilesizekb,fileCacheFileSystemWatcherEnable,ajpenable,host,welcomefiles,clientcertmode,blockcfadmin,verbose,allowedext,authpredicate,httpenable,gzipenable,hstsmaxage,aliases,authenabled,mimetypes,filecacheenable,clientcertcacertfiles,clientcertsslrenegotiationenable,clientcertenable,gzippredicate,clientcertissuerdns,hstsincludesubdomains,port,sslkeypass,SSLCerts,directorybrowsing,ajpsecret,profile,webRulesText,hostAlias,rewritesEnable,adobeScriptsAlias,webSocketEnable,webSocketURI,webSocketListener', k ) );
+		return newServerInfoStruct()
+			.filter( (k,v)=>listFindNoCase( 'servletPassPredicate,sslkeyfile,resourceManagerLogging,useproxyforwardedip,clientcertsubjectdns,basicauthenable,casesensitivepaths,sendFileMinSizeKB,blocksensitivepaths,basicauthusers,hstsenable,sslport,webroot,webrules,errorpages,clientcertcatruststorepass,clientcerttrustupstreamheaders,http2enable,sslcertfile,accesslogenable,securityrealm,clientcertcatruststorefile,filecachetotalsizemb,sslenable,ajpport,blockflashremoting,sslforceredirect,filecachemaxfilesizekb,fileCacheFileSystemWatcherEnable,ajpenable,host,welcomefiles,clientcertmode,blockcfadmin,verbose,allowedext,authpredicate,httpenable,gzipenable,hstsmaxage,aliases,authenabled,mimetypes,filecacheenable,clientcertcacertfiles,clientcertsslrenegotiationenable,clientcertenable,gzippredicate,clientcertissuerdns,hstsincludesubdomains,port,sslkeypass,SSLCerts,directorybrowsing,ajpsecret,profile,webRulesText,hostAlias,rewritesEnable,adobeScriptsAlias,webSocketEnable,webSocketURI,webSocketListener', k ) );
 	}
 
 	/**
@@ -3946,6 +3957,5 @@ component accessors="true" singleton {
 	function isSingleServerMode() {
 		return configService.getSetting( 'server.singleServerMode', false );
 	}
-
 
 }
