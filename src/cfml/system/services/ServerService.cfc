@@ -207,8 +207,7 @@ component accessors="true" singleton {
 					'listener' : d.web.websocket.listener ?: '/WebSocket.cfc'
 				},
 				'rewrites' : {
-					// TODO: Move this to index.bxm once we move to CommandBox 7
-					'rewritesFile' : d.web.rewrites.rewritesFile ?: 'index.cfm',
+					'rewritesFile' : d.web.rewrites.rewritesFile ?: '', // We'll default this later based on engine and site file system contents
 					'enable' : d.web.rewrites.enable ?: false,
 					'logEnable' : d.web.rewrites.logEnable ?: false,
 					'config' : d.web.rewrites.config ?: '',
@@ -673,9 +672,10 @@ component accessors="true" singleton {
 		// relative trayIcon in config setting server defaults is resolved relative to the web root
 		if( defaults.keyExists( 'trayIcon' ) && len( defaults.trayIcon ) ) { defaults.trayIcon = fileSystemUtil.resolvePath( defaults.trayIcon, defaultwebroot ); }
 		serverInfo.trayIcon			= serverProps.trayIcon 			?: serverJSON.trayIcon 				?: defaults.trayIcon;
-		serverInfo.rewritesEnable 	= serverProps.rewritesEnable	?: serverJSON.web.rewrites.enable		?: defaults.web.rewrites.enable;
+		serverInfo.rewritesEnable 	= serverProps.rewritesEnable	?: serverJSON.web.rewrites.enable	?: defaults.web.rewrites.enable;
 		serverInfo.rewritesStatusPath = serverJSON.web.rewrites.statusPath	?: defaults.web.rewrites.statusPath;
 		serverInfo.rewritesConfigReloadSeconds = serverJSON.web.rewrites.configReloadSeconds ?: defaults.web.rewrites.configReloadSeconds;
+		serverInfo.rewritesFile 	= serverProps.rewritesFile 	?: serverJSON.web.rewrites.rewritesFile ?: defaults.web.rewrites.rewritesFile;
 
 		// relative rewrite config path in server.json is resolved relative to the server.json
 		if( isDefined( 'serverJSON.web.rewrites.config' ) && len( serverJSON.web.rewrites.config ) ) { serverJSON.web.rewrites.config = fileSystemUtil.resolvePath( serverJSON.web.rewrites.config, defaultServerConfigFileDirectory ); }
@@ -683,9 +683,8 @@ component accessors="true" singleton {
 		if( isDefined( 'defaults.web.rewrites.config' ) && len( defaults.web.rewrites.config ) ) { defaults.web.rewrites.config = fileSystemUtil.resolvePath( defaults.web.rewrites.config, defaultwebroot ); }
 		serverInfo.rewritesConfig 	= serverProps.rewritesConfig 	?: serverJSON.web.rewrites.config 	?: defaults.web.rewrites.config;
 		serverInfo.rewriteslogEnable = serverJSON.web.rewrites.logEnable ?: defaults.web.rewrites.logEnable;
-		serverInfo.rewritesEnable 	= serverProps.rewritesEnable 	?: serverJSON.web.rewrites.enable 	?: defaults.web.rewrites.enable;
 		serverInfo.tuckeyRewritesEnable = serverInfo.rewritesEnable && len( serverInfo.rewritesConfig );
-
+		
 		// If there is a custom legacy Tuckey rewrite file and no custom servletPassPredicate, set the server to send all static files to the servlet so Tuckey can work.
 		if( serverInfo.tuckeyRewritesEnable && !len( defaults.web.servletPassPredicate ) ) {
 			job.addWarnLog( "You're using a custom Tuckey rewrites file (deprecated).  This will put CommandBox in 'legacy' mode where static files will bypass the Resource handler and all be served by the servlet." );
@@ -881,16 +880,10 @@ component accessors="true" singleton {
 	    serverInfo.engineName = serverinfo.cfengine contains 'lucee' ? 'lucee' : serverInfo.engineName;
 	    serverInfo.engineName = serverinfo.cfengine contains 'railo' ? 'railo' : serverInfo.engineName;
 	    serverInfo.engineName = serverinfo.cfengine contains 'adobe' ? 'adobe' : serverInfo.engineName;
+	    serverInfo.engineName = serverinfo.cfengine contains 'boxlang' ? 'boxlang' : serverInfo.engineName;
 	    serverInfo.engineName = serverinfo.warPath contains 'adobe' ? 'adobe' : serverInfo.engineName;
+	    serverInfo.engineName = serverinfo.warPath contains 'lucee' ? 'lucee' : serverInfo.engineName;
 	    serverInfo.engineName = serverinfo.warPath contains 'boxlang' ? 'boxlang' : serverInfo.engineName;
-
-		// Now that we know the engine, let's do the rewritesFile default
-		// If BoxLang then setup a default rewrite file if none specified
-		var rewritesFile 	= serverProps.rewritesFile 	?: ( serverJSON.web.rewrites.rewritesFile ?: '' );
-		if( !len( rewritesFile ) ){
-			rewritesFile = serverInfo.engineName eq 'boxlang' ? 'index.bxm' : 'index.cfm';
-		}
-		serverInfo.rewritesFile = rewritesFile;
 
 		var processName = ( serverInfo.name is "" ? "CommandBox" : serverInfo.name );
 
@@ -975,7 +968,7 @@ component accessors="true" singleton {
 				// The two settings aren't strictly site/web-related but we need them in resolveSiteSettings()
 				siteServerInfo.verbose = serverInfo.verbose;
 
-				resolveSiteSettings( siteName, siteServerInfo, serverProps, duplicate( serverJSON ), duplicate( defaults ), true );
+				resolveSiteSettings( siteName, siteServerInfo, serverProps, duplicate( serverJSON ), duplicate( defaults ), true, serverInfo.engineName );
 				serverInfo.sites[ siteName ] = siteServerInfo;
 
 				job.complete( serverInfo.verbose );
@@ -998,7 +991,7 @@ component accessors="true" singleton {
 
 			expandAndDefaultConfig( { data : site, rootDir : site.serverConfigFileDirectory } );
 
-			resolveSiteSettings( serverInfo.name, siteServerInfo, serverProps, serverJSON, defaults, false );
+			resolveSiteSettings( serverInfo.name, siteServerInfo, serverProps, serverJSON, defaults, false, serverInfo.engineName );
 			serverInfo[ 'sites' ] = [
 				'#serverInfo.name#'	: siteServerInfo
 			];
@@ -1102,7 +1095,7 @@ component accessors="true" singleton {
 		// This will get set into serverInfo on first install, taken from the box.json in the CFEngine
 		if( serverInfo.isJakartaEE ) {
 			// Ensure Runwar 6.x with Jakarta support
-			var runwarJakartaVersion = '6.0.3-SNAPSHOT';
+			var runwarJakartaVersion = '6.1.0-SNAPSHOT';
 			var runwarJarURL         = "https://s3.amazonaws.com/downloads.ortussolutions.com/cfmlprojects/runwar/#runwarJakartaVersion#/runwar-#runwarJakartaVersion#.jar";
 			var runwarJarLocal       = expandPath( "/commandbox/libExt/runwar-jakarta-#runwarJakartaVersion#.jar" );
 			var runwarJarFolderLocal = getDirectoryFromPath( runwarJarLocal );
@@ -1989,7 +1982,7 @@ component accessors="true" singleton {
 	 * @defaults The config defaults struct
 	 * @multiSite True if there is more than one site defined
 	 */
-	function resolveSiteSettings( string name, struct serverInfo, struct serverProps, struct serverJSON, struct defaults, boolean multiSite ) {
+	function resolveSiteSettings( string name, struct serverInfo, struct serverProps, struct serverJSON, struct defaults, boolean multiSite, string engineName ) {
 		var site = serverJSON.sites[ name ];
 		var job = wirebox.getInstance( 'interactiveJob' );
 
@@ -2263,6 +2256,24 @@ component accessors="true" singleton {
 				serverInfo.rewritesEnable = true;
 			}
 		}
+		
+		serverInfo.rewritesFile 	= site.rewritesFile 	?: serverJSON.web.rewrites.rewritesFile ?: defaults.web.rewrites.rewritesFile;
+		if( !len( serverInfo.rewritesFile ) ){
+			// Smart defaults based on engine and file system contents
+			if( arguments.engineName contains 'boxlang' ) {
+				// If there is an index.bxm file, use that, otherwise index.cfm if it exists, otherwise default to index.bxm if neither exist
+				if( fileExists( serverInfo.webroot & '/index.bxm' ) ) {
+					serverInfo.rewritesFile = 'index.bxm';
+				} else if( fileExists( serverInfo.webroot & '/index.cfm' ) ) {
+					serverInfo.rewritesFile = 'index.cfm';
+				} else {
+					serverInfo.rewritesFile = 'index.bxm';
+				}
+			} else {
+				// All non-BoxLang engines default to index.cfm
+				serverInfo.rewritesFile = 'index.cfm';
+			}
+		}
 
 		serverInfo.webRules = [];
 
@@ -2318,7 +2329,7 @@ component accessors="true" singleton {
 		if( serverInfo.rewritesEnable ) {
 			serverInfo.webRules.append(
 				// Mimic the old default Tuckey framework rewrite
-				"framework-rewrite( '#serverProps.rewritesFile#' )"
+				"framework-rewrite( '#serverInfo.rewritesFile#' )"
 			);
 		}
 
@@ -3548,6 +3559,7 @@ component accessors="true" singleton {
 			'clientCertCATrustStorePass': '',
 			'tuckeyRewritesEnable'	: false,
 			'rewritesEnable'		: false,
+			'rewritesFile'			: '',
 			'rewritesConfig'		: "",
 			'rewritesStatusPath'	: "",
 			'rewritesConfigReloadSeconds': "",
@@ -3659,7 +3671,7 @@ component accessors="true" singleton {
 	 */
 	struct function newSiteInfoStruct() {
 		return newServerInfoStruct()
-			.filter( (k,v)=>listFindNoCase( 'servletPassPredicate,sslkeyfile,resourceManagerLogging,useproxyforwardedip,clientcertsubjectdns,basicauthenable,casesensitivepaths,sendFileMinSizeKB,blocksensitivepaths,basicauthusers,hstsenable,sslport,webroot,webrules,errorpages,clientcertcatruststorepass,clientcerttrustupstreamheaders,http2enable,sslcertfile,accesslogenable,securityrealm,clientcertcatruststorefile,filecachetotalsizemb,sslenable,ajpport,blockflashremoting,sslforceredirect,filecachemaxfilesizekb,fileCacheFileSystemWatcherEnable,ajpenable,host,welcomefiles,clientcertmode,blockcfadmin,verbose,allowedext,authpredicate,httpenable,gzipenable,hstsmaxage,aliases,authenabled,mimetypes,filecacheenable,clientcertcacertfiles,clientcertsslrenegotiationenable,clientcertenable,gzippredicate,clientcertissuerdns,hstsincludesubdomains,port,sslkeypass,SSLCerts,directorybrowsing,ajpsecret,profile,webRulesText,hostAlias,rewritesEnable,adobeScriptsAlias,webSocketEnable,webSocketURI,webSocketListener', k ) );
+			.filter( (k,v)=>listFindNoCase( 'servletPassPredicate,sslkeyfile,resourceManagerLogging,useproxyforwardedip,clientcertsubjectdns,basicauthenable,casesensitivepaths,sendFileMinSizeKB,blocksensitivepaths,basicauthusers,hstsenable,sslport,webroot,webrules,errorpages,clientcertcatruststorepass,clientcerttrustupstreamheaders,http2enable,sslcertfile,accesslogenable,securityrealm,clientcertcatruststorefile,filecachetotalsizemb,sslenable,ajpport,blockflashremoting,sslforceredirect,filecachemaxfilesizekb,fileCacheFileSystemWatcherEnable,ajpenable,host,welcomefiles,clientcertmode,blockcfadmin,verbose,allowedext,authpredicate,httpenable,gzipenable,hstsmaxage,aliases,authenabled,mimetypes,filecacheenable,clientcertcacertfiles,clientcertsslrenegotiationenable,clientcertenable,gzippredicate,clientcertissuerdns,hstsincludesubdomains,port,sslkeypass,SSLCerts,directorybrowsing,ajpsecret,profile,webRulesText,hostAlias,rewritesEnable,rewritesFile,adobeScriptsAlias,webSocketEnable,webSocketURI,webSocketListener', k ) );
 	}
 
 	/**
