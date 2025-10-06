@@ -1641,6 +1641,14 @@ component accessors="true" singleton {
 
 	    // Conjoin standard error and output for convenience.
 	    processBuilder.redirectErrorStream( true );
+
+		// Start the server process in the web root.
+		if( directoryExists( defaultServerConfigFileDirectory ) ) {
+			processBuilder.directory( fileSystemUtil.getJavaFile( defaultServerConfigFileDirectory ) );
+		} else if( directoryExists( serverInfo.webroot ) ) {
+			processBuilder.directory( fileSystemUtil.getJavaFile( serverInfo.webroot ) );
+		}
+
 	    // Kick off actual process
 	    variables.process = processBuilder.start();
 
